@@ -6,6 +6,7 @@ import shutil
 
 SERIAL = 'serial'
 MPI_PARALLEL = 'mpi'
+TASK_PARALLEL = 'task'
 
 IN_PROGRESS_PREFIX = 'inprogress_'
 
@@ -62,6 +63,11 @@ Missing these names on the command line:
         self._configs = self.read_config(args)
 
         use_mpi = args.get('mpi', False)
+        use_task = args.get('task', '')
+
+        if use_mpi and use_task:
+            raise ValueError("Cannot specify both --mpi and --task")
+
         if use_mpi:
             try:
                 # This isn't a ceci dependency, so give a sensible error message if not installed.
@@ -70,16 +76,43 @@ Missing these names on the command line:
                 print('ERROR: Using --mpi option requires mpi4py to be installed.')
                 raise
 
+        if use_task.startswith('final/'):
+            final = True
+            try:
+                _, size = use_task.split('/')
+                size = int(size)
+            except TypeError:
+                raise ValueError("Specify task-parallelism using --task rank/size where rank=0..size-1 or --task=final/size")
+        elif use_task:
+            final = False
+            try:
+                rank, size = use_task.split('/')
+                rank = int(rank)
+                size = int(size)
+                if rank < 0 or rank >= size:
+                    raise TypeError("")
+            except TypeError:
+                raise ValueError("Specify task-parallelism using --task rank/size where rank=0..size-1 or --task=final/size")
+
+
         if use_mpi:
             self._parallel = MPI_PARALLEL
             self._comm = mpi4py.MPI.COMM_WORLD
             self._size = self._comm.Get_size()
             self._rank = self._comm.Get_rank()
+            self._task_finalizing = False
+        elif use_task:
+            self._parallel = TASK_PARALLEL
+            self._comm = None
+            self._size = size
+            self._rank = rank
+            self._task_finalizing = final
         else:
             self._parallel = SERIAL
             self._comm = None
             self._size = 1
             self._rank = 0
+            self._task_finalizing = False
 
     @property
     def rank(self):
@@ -111,6 +144,9 @@ Missing these names on the command line:
         """
         return self._parallel == MPI_PARALLEL
 
+    def is_task_parallel(self):
+        return self._parallel == TASK_PARALLEL
+
     def get_input(self, tag):
         """Return the path of an input file with the given tag"""
         return self._inputs[tag]
@@ -126,7 +162,11 @@ Missing these names on the command line:
         # If not the final version, add a tag at the start of the filename
         if not final_name:
             p = pathlib.Path(path)
-            p = p.parent / (IN_PROGRESS_PREFIX + p.name)
+            if self.is_task_parallel:
+                prefix = IN_PROGRESS_PREFIX + f"{self.rank}_"
+            else:
+                prefix = IN_PROGRESS_PREFIX 
+            p = p.parent / (prefix + p.name)
             path = str(p)
         return path
 
@@ -198,6 +238,12 @@ Missing these names on the command line:
             return obj.file
 
     def finalize(self):
+        # subclasses can override this under task parallel
+        # cases to combine results into one and generate the
+        # final output file
+        pass
+
+    def _finalize(self):
         # Synchronize files so that everything is closed
         if self.is_mpi():
             self.comm.Barrier()
@@ -217,7 +263,7 @@ Missing these names on the command line:
                     if pathlib.Path(final_name).is_dir():
                         shutil.rmtree(final_name)
                     shutil.move(temp_name, final_name)
-                else:
+                elif:
                     sys.stderr.write(f"NOTE/WARNING: Expected output file {final_name} was not generated.\n")
 
 
@@ -668,7 +714,10 @@ I currently know about these stages:
             print(f"Executing stage: {cls.name}")
 
         try:
-            stage.run()
+            if stage._task_finalizing:
+                stage.finalize()
+            else:
+                stage.run()
         except Exception as error:
             if args.pdb:
                 print("There was an exception - starting python debugger because you ran with --pdb")
@@ -677,10 +726,11 @@ I currently know about these stages:
             else:
                 raise
         try:
-            stage.finalize()
+            if (not stage.is_task_parallel) or (stage.is_task_parallel and stage._task_finalizing):
+                stage._finalize()
         except Exception as error:
             if args.pdb:
-                print("There was an exception in the finalization - starting python debugger because you ran with --pdb")
+                print("There was an exception in the file renaming - starting python debugger because you ran with --pdb")
                 print(error)
                 pdb.post_mortem()
             else:
