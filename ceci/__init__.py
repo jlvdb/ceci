@@ -1,5 +1,6 @@
 """Ceci n'est pas une pipeline"""
 
+from .provenance import Provenance
 from .stage import PipelineStage
 from .pipeline import Pipeline, MiniPipeline, ParslPipeline, DryRunPipeline, FlowChartPipeline
 from .main import prepare_for_pipeline, run_pipeline
