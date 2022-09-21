@@ -89,10 +89,10 @@ def test_interactive_pipeline():
     pipe2.build_stage(WLGCSelector, zbin_edges=[0.2, 0.3, 0.5], ra_range=[-5, 5])
     pipe2.build_stage(SysMapMaker)
     pipe2.build_stage(SourceSummarizer)
-    pipe2.build_stage(WLGCCov, aliases=dict(covariance='covariance_copy'))
+    pipe2.build_stage(WLGCCov, covariance='covariance_copy')
     pipe2.build_stage(WLGCRandoms)
     pipe2.build_stage(WLGCTwoPoint, name="WLGC2Point")
-    pipe2.build_stage(WLGCSummaryStatistic, aliases=dict(covariance='covariance_copy'))
+    pipe2.build_stage(WLGCSummaryStatistic, covariance='covariance_copy')
 
     assert len(pipe2.WLGCCov.outputs) == 1
 
@@ -105,9 +105,9 @@ def test_interactive_pipeline():
 
     rpr = repr(pipe2.WLGCCov.config)
 
-    path = pipe2.pipeline_files.get_path('covariance_copy')
-    assert pipe2.pipeline_files.get_tag(path) == 'covariance_copy'
-    assert pipe2.pipeline_files.get_type('covariance_copy') == pipe2.WLGCCov.get_output_type('covariance')
+    path = pipe2.pipeline_files.get_path('covariance')
+    assert pipe2.pipeline_files.get_tag(path) == 'covariance'
+    assert pipe2.pipeline_files.get_type('covariance') == pipe2.WLGCCov.get_output_type('covariance')
 
     pipe2.run()
 
@@ -130,7 +130,68 @@ def test_inter_pipe():
     assert not hasattr(pipe2, 'bob')
 
 
+def test_build_interactive_pipe():
 
+    pipe = Pipeline.interactive()
+
+    global_config = dict(metacalibration=True)
+    overall_inputs = {'DM':'./tests/inputs/dm.txt',
+                      'fiducial_cosmology':'./tests/inputs/fiducial_cosmology.txt'}
+
+    pipe.PZEstimationPipe = PZEstimationPipe.build()
+    pipe.shearMeasurementPipe = shearMeasurementPipe.build(
+        apply_flag=False,
+        **global_config,
+    )
+    pipe.WLGCSelector = WLGCSelector.build(
+        connections=dict(
+            shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
+            photoz_pdfs=pipe.PZEstimationPipe.io.photoz_pdfs,
+        ),
+        zbin_edges=[0.2, 0.3, 0.5],
+        ra_range=[-5, 5],
+        **global_config,
+    )
+    pipe.SysMapMaker = SysMapMaker.build()
+    pipe.SourceSummarizer = SourceSummarizer.build(
+        connections=dict(
+            tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
+            photoz_pdfs=pipe.PZEstimationPipe.io.photoz_pdfs,
+        ),
+        **global_config,
+    )
+    pipe.WLGCCov = WLGCCov.build(
+        connections=dict(
+            tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
+            shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
+            source_summary_data=pipe.SourceSummarizer.io.source_summary_data,
+            diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,
+        ),
+        **global_config,
+    )
+    pipe.WLGCRandoms = WLGCRandoms.build()
+    pipe.WLGCTwoPoint = WLGCTwoPoint.build(
+        connections=dict(
+            tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
+            shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
+            diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,
+            random_catalog=pipe.WLGCRandoms.io.random_catalog,
+        ),
+        **global_config,
+    )
+    pipe.WLGCSummaryStatistic = WLGCSummaryStatistic.build(
+        connections=dict(
+            twopoint_data=pipe.WLGCTwoPoint.io.twopoint_data,
+            source_summary_data=pipe.SourceSummarizer.io.source_summary_data,
+        ),        
+        **global_config,
+    )
+
+    output_dir = 'temp_out'
+    run_config = dict(output_dir=output_dir, log_dir=output_dir, resume=False)
+    pipe.initialize(overall_inputs, run_config, None)
+    pipe.save('test_example.yml')
+    os.system(f"\\rm -rf {output_dir}")
 
 
 
@@ -138,3 +199,4 @@ def test_inter_pipe():
 if __name__ == "__main__":
     test_config()
     test_interactive()
+    test_build_interactive_pipe()

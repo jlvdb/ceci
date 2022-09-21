@@ -22,6 +22,62 @@ DASK_PARALLEL = "dask"
 IN_PROGRESS_PREFIX = "inprogress_"
 
 
+class StageIO:
+    """A small utility class for Stage Input/ Output
+
+    This make it possible to get access to stage inputs and outputs
+    as attributes rather that by using the get_handle() method.
+
+    In short it maps
+
+    a_stage.get_handle('input', allow_missing=True) to a_stage.input
+
+    This allows users to be more concise when writing pipelines.
+    """
+    def __init__(self, parent):
+        self._parent = parent
+
+    def __getattr__(self, item):
+        return self._parent.get_handle(item, allow_missing=True)
+
+
+class StageBuilder:
+    """A small utility class that help building stages
+
+    This provides a mechasim to get the name of the stage from the
+    attribute name in the Pipeline the stage belongs to.
+
+    I.e., we can do:
+
+    a_pipe.stage_name = StageClass.build(...)
+
+    And get a stage named 'stage_name', rather than having to do:
+
+    a_stage = StageClass.make_stage(..)
+    a_pipe.add_stage(a_stage)
+    """
+    def __init__(self, stage_class, **kwargs):
+        self.stage_class = stage_class
+        self._kwargs = kwargs
+
+    def build(self, name):
+        """Actually build the stage, this is called by the pipeline the stage
+        belongs to
+
+        Parameters
+        ----------
+        name : `str`
+            The name for this stage we are building
+
+        Returns
+        -------
+        stage : `Stage`
+            The newly built stage
+        """
+        stage = self.stage_class.make_stage(name=name, **self._kwargs)
+        return stage
+
+
 class PipelineStage:
     """A PipelineStage implements a single calculation step within a wider pipeline.
 
@@ -42,6 +98,7 @@ class PipelineStage:
     config_options = {}
     doc = ""
     allow_reload = False
+    data_store = DATA_STORE()
 
     def __init__(self, args, comm=None):
         """Construct a pipeline stage, specifying the inputs, outputs, and configuration for it.
@@ -90,11 +147,14 @@ class PipelineStage:
         self._configs = StageConfig(**self.config_options)
         self._inputs = None
         self._outputs = None
+        self._aliases = {}
         self._parallel = SERIAL
         self._comm = None
         self._size = 1
         self._rank = 0
         self._io_checked = False
+        self._input_length = None
+        self.io = StageIO(self)        
         self.dask_client = None
         self._rerun_key = args.get('rerun_key', 0)
         self._provenance = None
@@ -104,25 +164,201 @@ class PipelineStage:
 
     @classmethod
     def make_stage(cls, **kwargs):
-        """Make a stage of a particular type"""
+        """Make a stage of a particular type
+
+        Notes
+        -----
+        kwargs are used to set stage configuration,
+        the should be key, value pairs, where the key
+        is the parameter name and the value is value we want to assign
+
+        The 'connections' keyword is special, it is a dict[str, DataHandle]
+        and should define the Input connections for this stage
+
+        Returns
+        -------
+        A stage
+        """
         kwcopy = kwargs.copy()
         kwcopy.setdefault("config", None)
         comm = kwcopy.pop("comm", None)
         name = kwcopy.get("name", None)
-        aliases = kwcopy.pop("aliases", {})
+        connections = kwargs.pop('connections', {})        
         for input_ in cls.inputs:
-            kwcopy.setdefault(input_[0], "None")
+            kwcopy.setdefault(input_[0], 'None')
         if name is not None:
             for output_ in cls.outputs:  # pylint: disable=no-member
                 outtag = output_[0]
-                aliases[outtag] = f"{outtag}_{name}"
-        kwcopy["aliases"] = aliases
-        return cls(kwcopy, comm=comm)
+                kwcopy.setdefault(outtag, f"{outtag}_{name}")
+        stage = cls(kwcopy, comm=comm)
+        for key, val in connections.items():
+            stage.set_data(key, val, do_read=False)
+        return stage
 
+    @classmethod
+    def build(cls, **kwargs):
+        """Return an object that can be used to build a stage"""
+        return StageBuilder(cls, **kwargs)
+
+    def get_handle(self, tag, path=None, allow_missing=False):
+        """Gets a DataHandle associated to a particular tag
+
+        Parameters
+        ----------
+        tag : str
+            The tag (from cls.inputs or cls.outputs) for this data
+        path : str or None
+            The path to the data, only needed if we might need to read the data
+        allow_missing : bool
+            If False this will raise a key error if the tag is not in the DataStore
+
+        Returns
+        -------
+        handle : DataHandle
+            The handle that give access to the associated data
+        """
+        aliased_tag = self.get_aliased_tag(tag)
+        handle = self.data_store.get(aliased_tag)
+        if handle is None:
+            if not allow_missing:
+                raise KeyError(f'{self.instance_name} failed to get data by handle {aliased_tag}, associated to {tag}')
+            handle = self.add_handle(tag, path=path)
+        return handle
+
+    def add_handle(self, tag, data=None, path=None):
+        """Adds a DataHandle associated to a particular tag
+
+        Parameters
+        ----------
+        tag : str
+            The tag (from cls.inputs or cls.outputs) for this data
+        data : any or None
+            If not None these data will be associated to the handle
+        path : str or None
+            If not None, this will be the path used to read the data
+
+        Returns
+        -------
+        handle : DataHandle
+            The handle that gives access to the associated data
+        """
+        aliased_tag = self.get_aliased_tag(tag)
+        if tag in self._inputs:
+            if path is None:
+                path = self.get_input(tag)
+            handle_type = self.get_input_type(tag)
+            mode = 'r'
+        else:
+            if path is None:
+                path = self.get_output(tag)
+            handle_type = self.get_output_type(tag)
+            mode = 'w'
+        if not issubclass(handle_type, DataHandle):
+            return handle_type(path=path, mode=mode)
+        handle = handle_type(aliased_tag, path=path, data=data, creator=self.instance_name)
+        print(f"Inserting handle into data store.  {aliased_tag}: {handle.path}, {handle.creator}")
+        self.data_store[aliased_tag] = handle
+        return handle
+
+    def get_data(self, tag, allow_missing=True):
+        """Gets the data associated to a particular tag
+
+        Notes
+        -----
+        1. This gets the data via the DataHandle, and can and will read the data
+        from disk if needed.
+
+        Parameters
+        ----------
+        tag : str
+            The tag (from cls.inputs or cls.outputs) for this data
+        allow_missing : bool
+            If False this will raise a key error if the tag is not in the DataStore
+
+        Returns
+        -------
+        data : any
+            The data accesed by the handle assocated to the tag
+        """
+        handle = self.get_handle(tag, allow_missing=allow_missing)
+        if not handle.has_data:
+            handle.read()
+        return handle()
+
+    def set_data(self, tag, data, path=None, do_read=True):
+        """Sets the data associated to a particular tag
+
+        Notes
+        -----
+        1. If data is a DataHandle and tag is one of the input tags,
+        then this will add an alias between the two, i.e., it will
+        set `self.config.alias[tag] = data.tag`.  This allows the user to
+        make connections between stages simply by passing DataHandles between
+        them.
+
+        Parameters
+        ----------
+        tag : str
+            The tag (from cls.inputs or cls.outputs) for this data
+        data : any
+            The data being set,
+        path : str or None
+            Can be used to set the path for the data
+        do_read : bool
+            If True, will read the data if it is not set
+
+        Returns
+        -------
+        data : any
+            The data accesed by the handle assocated to the tag
+        """
+        if isinstance(data, DataHandle):
+            aliased_tag = data.tag
+            if tag in self.input_tags():
+                self._aliases[tag] = aliased_tag
+                if data.has_path:
+                    self._inputs[tag] = data.path
+            arg_data = data.data
+        else:
+            if path is None:
+                arg_data = data
+                path = data.path
+                self._inputs[tag] = data.path
+            else:
+                arg_data = None
+
+        handle = self.get_handle(tag, path=path, allow_missing=True)
+        if not isinstance(handle, DataHandle):
+            return handle            
+        if not handle.has_data:
+            if arg_data is None and do_read:
+                handle.read()
+            if arg_data is not None:
+                handle.data = arg_data
+        return handle.data
+
+    def add_data(self, tag, data=None):
+        """Adds a handle to the DataStore associated to a particular tag and
+        attaches data to it.
+
+        Parameters
+        ----------
+        tag : str
+            The tag (from cls.inputs or cls.outputs) for this data
+        data : any
+
+        Returns
+        -------
+        data : any
+            The data accesed by the handle assocated to the tag
+        """
+        handle = self.add_handle(tag, data=data)
+        return handle.data
+    
     def get_aliases(self):
         """Returns the dictionary of aliases used to remap inputs and outputs
         in the case that we want to have multiple instance of this class in the pipeline"""
-        return self.config.get("aliases", None)
+        return self._aliases
 
     def get_aliased_tag(self, tag):
         """Returns the possibly remapped value for an input or output tag
@@ -137,10 +373,7 @@ class PipelineStage:
         aliased_tag : `str`
             The aliases version of the tag
         """
-        aliases = self.get_aliases()
-        if aliases is None:
-            return tag
-        return aliases.get(tag, tag)
+        return self._aliases.get(tag, tag)
 
     @abstractmethod
     def run(self):  # pragma: no cover
@@ -196,15 +429,10 @@ class PipelineStage:
         missing_inputs = []
         for x in self.input_tags():
             val = args.get(x)
-            aliased_tag = self.get_aliased_tag(x)
-
-            if val is None:
-                val = args.get(aliased_tag)
-
             if val is None:  # pragma: no cover
                 missing_inputs.append(f"--{x}")
             else:
-                self._inputs[aliased_tag] = val
+                self._inputs[x] = val
         if missing_inputs:  # pragma: no cover
             missing_inputs = "  ".join(missing_inputs)
             raise ValueError(
@@ -219,12 +447,12 @@ class PipelineStage:
         # current folder (this is for CWL compliance)
         self._outputs = {}
         for i, x in enumerate(self.output_tags()):
+            val = args.get(x)
             aliased_tag = self.get_aliased_tag(x)
-            if args.get(x) is None:
+            if val is None:
                 ftype = self.outputs[i][1]  # pylint: disable=no-member
-                self._outputs[aliased_tag] = ftype.make_name(aliased_tag)
-            else:
-                self._outputs[aliased_tag] = args[x]
+                val = ftype.make_name(x)
+            self._outputs[x] = val
         self._io_checked = True
 
     def setup_mpi(self, comm=None):
@@ -698,10 +926,19 @@ I currently know about these stages:
 
         This can be overridden by sub-classes for more complicated behavior
         """
+        tag_type = self.get_output_type(tag)
         aliased_tag = self.get_aliased_tag(tag)
         temp_name = self.get_output(aliased_tag)
         final_name = self.get_output(aliased_tag, final_name=True)
 
+        if issubclass(tag_type, DataHandle):
+            handle = self.get_handle(tag, allow_missing=True)
+            if not os.path.exists(handle.path):
+                handle.write()
+            handle.path = final_name
+        else:
+            handle = None
+        
         # it's not an error here if the path does not exist,
         # because that will be handled later.
         if pathlib.Path(temp_name).exists():
@@ -952,8 +1189,7 @@ I currently know about these stages:
         a more specific object - see the types.py file for more info.
 
         """
-        aliased_tag = self.get_aliased_tag(tag)
-        path = self.get_input(aliased_tag)
+        path = self.get_input(tag)
         input_class = self.get_input_type(tag)
         obj = input_class(path, "r", **kwargs)
         prov = Provenance()
@@ -1000,8 +1236,7 @@ I currently know about these stages:
             Extra args are passed on to the file's class constructor.
 
         """
-        aliased_tag = self.get_aliased_tag(tag)
-        path = self.get_output(aliased_tag, final_name=final_name)
+        path = self.get_output(tag, final_name=final_name)
         output_class = self.get_output_type(tag)
 
         # HDF files can be opened for parallel writing
@@ -1214,8 +1449,8 @@ I currently know about these stages:
         ret_dict = {}
         for tag, ftype in self.outputs_():
             aliased_tag = self.get_aliased_tag(tag)
-            if not aliased_tag in self._outputs.keys(): # pragma: no cover
-                self._outputs[aliased_tag]=ftype.make_name(aliased_tag)
+            if not tag in self._outputs.keys(): # pragma: no cover
+                self._outputs[tag]=ftype.make_name(aliased_tag)
             ret_dict[aliased_tag] = f"{outdir}/{self._outputs[aliased_tag]}"
         return ret_dict
 
@@ -1231,7 +1466,7 @@ I currently know about these stages:
         for tag, ftype in self.outputs_():
             aliased_tag = self.get_aliased_tag(tag)
             stream.write(
-                f"{tag:20} : {aliased_tag:20} :{str(ftype):20} : {self._outputs[aliased_tag]}\n"
+                f"{tag:20} : {aliased_tag:20} :{str(ftype):20} : {self._outputs[tag]}\n"
             )
 
     def should_skip(self, run_config):

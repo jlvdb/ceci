@@ -7,7 +7,7 @@ import yaml
 import shutil
 from abc import abstractmethod
 
-from .stage import PipelineStage
+from .stage import PipelineStage, StageBuilder
 from . import minirunner
 from .sites import load, get_default_site
 from .utils import embolden, extra_paths
@@ -1209,6 +1209,13 @@ class MiniPipeline(Pipeline):
         self.sleep = kwargs.pop("sleep", None)
         super().__init__(*args, **kwargs)
 
+    def __setattr__(self, name, value):
+        if isinstance(value, StageBuilder):
+            stage = value.build(name)
+            self.add_stage(stage)
+            return stage
+        return Pipeline.__setattr__(self, name, value)
+        
     def build_dag(self, jobs):
         """Build a directed acyclic graph of a set of stages.
 

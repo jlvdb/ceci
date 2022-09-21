@@ -118,7 +118,7 @@ def test_make_stage():
             pass
 
     stage = TestStage.make_stage(name="copy_of_test_stage", a='c', inp1='dummy', out="my_file.hdf5")
-    assert stage.find_outputs('.')['out_copy_of_test_stage'] =='./my_file.hdf5'
+    assert stage.find_outputs('.')['out'] =='./my_file.hdf5'
     assert stage.config.a == 'c'
 
 
@@ -425,14 +425,6 @@ def test_open_input():
     ii = India.make_stage(name="IndiaCopy", my_input="tests/test.hdf5", config="tests/config.yml")
 
     print(ii.get_aliases())
-
-    # This currently works
-    assert os.path.exists(ii.get_input("my_alias"))
-
-    # This works now
-    f = ii.open_input("my_input")
-    print(f.keys())
-    f.close()
 
 
 def test_open_output():
