@@ -14,7 +14,7 @@ class Site:
         self.info = {}
         self.config = config
 
-    def check_import(self, launcher):  # pylint: disable=no-self-use
+    def check_import(self, launcher):
         """Make sure that required libraries can be imported, and raise ImportError if they can not
 
         Parameters

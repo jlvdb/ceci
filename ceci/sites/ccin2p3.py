@@ -68,7 +68,7 @@ class CCParallel(Site):
                 f"{cmd} {mpi2}"
             )
 
-    def configure_for_parsl(self):  # pylint: disable=no-self-use
+    def configure_for_parsl(self):
         """Utility function to set parsl configuration parameters"""
         raise ValueError("Parsl not configured for CC IN2P3 in ceci yet")
 
