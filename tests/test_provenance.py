@@ -7,7 +7,7 @@ import datetime
 import os
 import random
 import string
-import dict_io
+import desc_dict_io
 
 def test_generate():
     p = Provenance()
@@ -164,7 +164,7 @@ def test_existing_hdf():
         fname = os.path.join(dirname, "test.hdf")
         fname2 = os.path.join(dirname, "test2.hdf")
 
-        with dict_io.utils.open_hdf(fname, "w") as f:
+        with desc_dict_io.utils.open_hdf(fname, "w") as f:
             f.create_group("cake")
 
         id1 = p.write(fname)

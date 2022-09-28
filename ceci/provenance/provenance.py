@@ -9,7 +9,7 @@ import datetime
 import functools
 import numpy as np
 import copy
-import dict_io
+import desc_dict_io
 
 # Some useful constants
 unknown_value = "UNKNOWN"
@@ -242,7 +242,7 @@ class Provenance:
         str
             The newly-assigned file ID
         """
-        return dict_io.write(
+        return desc_dict_io.write(
             self.provenance,
             f,
             provenance_group,
@@ -267,7 +267,7 @@ class Provenance:
         -------
         None
         """
-        d, com = dict_io.read_get(
+        d, com = desc_dict_io.read(
             filename,
             provenance_group,
             comments_section=comments_section,
@@ -297,11 +297,11 @@ class Provenance:
         value: any
             The native value of the key in this value
         """
-        return dict_io.read_get(
+        return desc_dict_io.get(
             filename,
             provenance_group,
-            item=(section, key),
-            comments_section=comments_section,
+            section,
+            key,
         )
 
     def to_string_dict(self):

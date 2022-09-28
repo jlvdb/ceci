@@ -30,7 +30,7 @@ setup(
     },
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
-    install_requires=['pyyaml', 'psutil', 'dict-io'],
+    install_requires=['pyyaml', 'psutil', 'desc-dict-io'],
     extras_require={
       'parsl': ['flask', 'parsl>=1.0.0'],
       'cwl': ['cwlgen>=0.4', 'cwltool>=2.0.20200126090152'],
