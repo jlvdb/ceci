@@ -10,12 +10,12 @@ def diff(dirname=None, parent_frames=1):
     if dirname is None:
         dirname = get_caller_directory(parent_frames + 1)
 
-    if dirname is None:
+    if dirname is None:  # pragma: no cover
         return "ERROR_GIT_NO_DIRECTORY"
     # We use git diff head because it shows all differences,
     # including any that have been staged but not committed.
     try:
-        diff = subprocess.run(
+        the_diff = subprocess.run(
             "git diff HEAD".split(),
             cwd=dirname,
             universal_newlines=True,
@@ -27,22 +27,22 @@ def diff(dirname=None, parent_frames=1):
     # There are lots of different ways this can go wrong.
     # Here are some - any others it is probably worth knowing
     # about
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired:  # pragma: no cover
         return "ERROR_GIT_TIMEOUT"
-    except UnicodeDecodeError:
+    except UnicodeDecodeError:  # pragma: no cover
         return "ERROR_GIT_DECODING"
-    except subprocess.SubprocessError:
+    except subprocess.SubprocessError:  # pragma: no cover
         return "ERROR_GIT_OTHER"
-    except FileNotFoundError:
+    except FileNotFoundError:  # pragma: no cover
         return "ERROR_GIT_NOT_RUNNABLE"
-    except OSError:
+    except OSError:  # pragma: no cover
         return "ERROR_GIT_OTHER_OSERROR"
     # If for some reason we are running outside the main repo
     # this will return an error too
-    if diff.returncode:
+    if the_diff.returncode:  # pragma: no cover
         return "ERROR_GIT_FAIL"
 
-    return diff.stdout
+    return the_diff.stdout
 
 
 def current_revision(dirname=None, parent_frames=1):
@@ -52,7 +52,7 @@ def current_revision(dirname=None, parent_frames=1):
     if dirname is None:
         dirname = get_caller_directory(parent_frames + 1)
 
-    if dirname is None:
+    if dirname is None:  # pragma: no cover
         return "ERROR_GIT_NO_DIRECTORY"
     try:
         rev = subprocess.run(
@@ -64,18 +64,18 @@ def current_revision(dirname=None, parent_frames=1):
             stderr=subprocess.STDOUT,
         )
     # Same as git diff above.
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired:  # pragma: no cover
         return "ERROR_GIT_TIMEOUT"
-    except UnicodeDecodeError:
+    except UnicodeDecodeError:  # pragma: no cover
         return "ERROR_GIT_DECODING"
-    except subprocess.SubprocessError:
+    except subprocess.SubprocessError:  # pragma: no cover
         return "ERROR_GIT_OTHER"
-    except FileNotFoundError:
+    except FileNotFoundError:  # pragma: no cover
         return "ERROR_GIT_NOT_RUNNABLE"
-    except OSError:
+    except OSError:  # pragma: no cover
         return "ERROR_GIT_OTHER_OSERROR"
     # If for some reason we are running outside the main repo
     # this will return an error too
-    if rev.returncode:
+    if rev.returncode:  # pragma: no cover
         return "ERROR_GIT_FAIL"
     return rev.stdout

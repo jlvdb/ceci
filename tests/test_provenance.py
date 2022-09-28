@@ -7,7 +7,7 @@ import datetime
 import os
 import random
 import string
-
+import dict_io
 
 def test_generate():
     p = Provenance()
@@ -61,9 +61,9 @@ def test_inputs():
 
 
 @pytest.mark.parametrize(
-    "file_type, opener", [("hdf", utils.open_hdf), ("yml", utils.open_file)]
+    "file_type", [("hdf"), ("yml")]
 )
-def test_new(file_type, opener):
+def test_new(file_type):
     p = Provenance()
     p["sec", "aaa"] = "xxx"
     p["sec", "bbb"] = 123
@@ -164,7 +164,7 @@ def test_existing_hdf():
         fname = os.path.join(dirname, "test.hdf")
         fname2 = os.path.join(dirname, "test2.hdf")
 
-        with utils.open_hdf(fname, "w") as f:
+        with dict_io.utils.open_hdf(fname, "w") as f:
             f.create_group("cake")
 
         id1 = p.write(fname)
@@ -218,7 +218,7 @@ def test_yml():
         assert d == d2
 
         q = Provenance()
-        q.read_yaml(open(fname))
+        q.read(open(fname))
         assert q["base", "file_id"] == file_id
         assert q["base", "process_id"] == q["base", "process_id"]
 
@@ -247,7 +247,7 @@ def test_long():
     p["section", "key"] = text
 
     with tempfile.TemporaryDirectory() as dirname:
-        fname = os.path.join("./", "test.fits")
+        fname = os.path.join(dirname, "test.fits")
         with pytest.warns(UserWarning):
             p.write(fname)
         q = Provenance()
@@ -256,7 +256,8 @@ def test_long():
 
 def test_comments():
     p = Provenance()
-    p.generate()
+    orig_comments=["boots and cats", "four on the floor"]
+    p.generate(comments=orig_comments)
     comments = [
         "Hello,",
         "My name is Inigo Montoya",
@@ -268,13 +269,17 @@ def test_comments():
 
     with tempfile.TemporaryDirectory() as dirname:
         for suffix in ["hdf", "fits", "yml"]:
-            fname = os.path.join("./", f"test.{suffix}")
+            fname = os.path.join(dirname, f"test.{suffix}")
             p.write(fname)
             q = Provenance()
             q.read(fname)
             for c in comments:
                 assert c in q.comments
-
+            for c in orig_comments:
+                assert c in q.comments
+            q_copy = q.copy()
+            assert q_copy.to_string_dict() == q.to_string_dict()
+                
 
 if __name__ == "__main__":
     # test_comments()
