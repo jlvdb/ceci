@@ -1,6 +1,6 @@
-from ceci import BaseIOHandle
+from ceci import DataHandle
 
-class DataFile(BaseIOHandle):
+class DataFile(DataHandle):
     """
     A class representing a DataFile to be made by pipeline stages
     and passed on to subsequent ones.
@@ -18,18 +18,8 @@ class DataFile(BaseIOHandle):
 
     """
 
-    def __init__(self, path, mode, validate=True, **kwargs):
-        super().__init__(kwargs.pop("provenance", None))
-        self.path = path
-        self.mode = mode
-
-        if mode not in ["r", "w"]:
-            raise ValueError(f"File 'mode' argument must be 'r' or 'w' not '{mode}'")
-
-        self.file = self.open(path, mode, **kwargs)
-
     @classmethod
-    def open(cls, path, mode):
+    def _open(cls, path, mode):
         """
         Open a data file.  The base implementation of this function just
         opens and returns a standard python file object.
@@ -40,13 +30,6 @@ class DataFile(BaseIOHandle):
 
         """
         return open(path, mode)
-
-    @classmethod
-    def make_name(cls, tag):
-        if cls.suffix:
-            return f"{tag}.{cls.suffix}"
-        else:
-            return tag
 
 
 class HDFFile(DataFile):
@@ -61,7 +44,7 @@ class HDFFile(DataFile):
     format = "http://edamontology.org/format_3590"
 
     @classmethod
-    def open(cls, path, mode, **kwargs):
+    def _open(cls, path, mode, **kwargs):
         import warnings
 
         with warnings.catch_warnings():
@@ -80,7 +63,7 @@ class FitsFile(DataFile):
     format = "http://edamontology.org/format_2333"
 
     @classmethod
-    def open(cls, path, mode, **kwargs):
+    def _open(cls, path, mode, **kwargs):
         import fitsio
 
         # Fitsio doesn't have pure 'w' modes, just 'rw'.
