@@ -154,7 +154,7 @@ class PipelineStage:
         self._rank = 0
         self._io_checked = False
         self._input_length = None
-        self.io = StageIO(self)        
+        self.io = StageIO(self)
         self.dask_client = None
         self._rerun_key = args.get('rerun_key', 0)
         self._provenance = None
@@ -183,7 +183,7 @@ class PipelineStage:
         kwcopy.setdefault("config", None)
         comm = kwcopy.pop("comm", None)
         name = kwcopy.get("name", None)
-        connections = kwargs.pop('connections', {})        
+        connections = kwargs.pop('connections', {})
         for input_ in cls.inputs:
             kwcopy.setdefault(input_[0], 'None')
         if name is not None:
@@ -247,14 +247,11 @@ class PipelineStage:
             if path is None:
                 path = self.get_input(tag)
             handle_type = self.get_input_type(tag)
-            mode = 'r'
         else:
             if path is None:
                 path = self.get_output(tag)
             handle_type = self.get_output_type(tag)
-            mode = 'w'
-        if not issubclass(handle_type, DataHandle):
-            return handle_type(path=path, mode=mode)
+        assert issubclass(handle_type, DataHandle)
         handle = handle_type(aliased_tag, path=path, data=data, creator=self.instance_name)
         print(f"Inserting handle into data store.  {aliased_tag}: {handle.path}, {handle.creator}")
         self.data_store[aliased_tag] = handle
@@ -328,8 +325,6 @@ class PipelineStage:
                 arg_data = None
 
         handle = self.get_handle(tag, path=path, allow_missing=True)
-        if not isinstance(handle, DataHandle):
-            return handle            
         if not handle.has_data:
             if arg_data is None and do_read:
                 handle.read()
@@ -354,7 +349,7 @@ class PipelineStage:
         """
         handle = self.add_handle(tag, data=data)
         return handle.data
-    
+
     def get_aliases(self):
         """Returns the dictionary of aliases used to remap inputs and outputs
         in the case that we want to have multiple instance of this class in the pipeline"""
@@ -405,7 +400,7 @@ class PipelineStage:
         except Exception as error:
             error_class = type(error)
             msg = str(error)
-            raise error_class(f"Error configuring {self.instance_name}: {msg}")
+            raise error_class(f"Error configuring {self.instance_name}: {msg}") from error
         self.check_io(args)
 
     def check_io(self, args=None):
@@ -448,7 +443,7 @@ class PipelineStage:
         self._outputs = {}
         for i, x in enumerate(self.output_tags()):
             val = args.get(x)
-            aliased_tag = self.get_aliased_tag(x)
+            # aliased_tag = self.get_aliased_tag(x)
             if val is None:
                 ftype = self.outputs[i][1]  # pylint: disable=no-member
                 val = ftype.make_name(x)
@@ -938,7 +933,7 @@ I currently know about these stages:
             handle.path = final_name
         else:
             handle = None
-        
+
         # it's not an error here if the path does not exist,
         # because that will be handled later.
         if pathlib.Path(temp_name).exists():
@@ -1110,7 +1105,7 @@ I currently know about these stages:
             else:
                 collected_results = self.comm.gather(results)
                 if self.rank != 0:
-                    return
+                    return None
             # convert the list-of-lists back into a single list
             # of results, returning to the original ordering.
             # The round-robin way we allocated them in the first
@@ -1191,7 +1186,7 @@ I currently know about these stages:
         """
         path = self.get_input(tag)
         input_class = self.get_input_type(tag)
-        obj = input_class(path, "r", **kwargs)
+        obj = input_class(tag, path=path, **kwargs)
         prov = Provenance()
         try:
             prov.read(path)
@@ -1199,10 +1194,9 @@ I currently know about these stages:
         except:
             pass
 
-
         if wrapper:  # pragma: no cover
             return obj
-        return obj.file
+        return obj.open(mode='r')
 
     def open_output(
         self, tag, wrapper=False, final_name=False, **kwargs
@@ -1272,11 +1266,11 @@ I currently know about these stages:
 
 
         # Return an opened object representing the file
-        obj = output_class(path, "w", provenance=self.provenance, **kwargs)
+        obj = output_class(tag, path=path, provenance=self.provenance, **kwargs)
 
         if wrapper:
             return obj
-        return obj.file
+        return obj.open(mode="w")
 
     @classmethod
     def inputs_(cls):
@@ -1323,6 +1317,7 @@ I currently know about these stages:
 
     @property
     def provenance(self):
+        """Return the provenance information associated with this stage"""
         if self._provenance is not None:
             return self._provenance
 
@@ -1449,7 +1444,7 @@ I currently know about these stages:
         ret_dict = {}
         for tag, ftype in self.outputs_():
             aliased_tag = self.get_aliased_tag(tag)
-            if not tag in self._outputs.keys(): # pragma: no cover
+            if not tag in self._outputs: # pragma: no cover
                 self._outputs[tag]=ftype.make_name(aliased_tag)
             ret_dict[aliased_tag] = f"{outdir}/{self._outputs[aliased_tag]}"
         return ret_dict
