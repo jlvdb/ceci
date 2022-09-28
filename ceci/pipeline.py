@@ -1215,7 +1215,7 @@ class MiniPipeline(Pipeline):
             self.add_stage(stage)
             return stage
         return Pipeline.__setattr__(self, name, value)
-        
+
     def build_dag(self, jobs):
         """Build a directed acyclic graph of a set of stages.
 
