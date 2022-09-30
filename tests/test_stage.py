@@ -1,11 +1,14 @@
+import tempfile
+import os
+import numpy as np
+
 from ceci.stage import PipelineStage
 from ceci.config import StageParameter
 from ceci_example.types import HDFFile
-import numpy as np
 from ceci.errors import *
 import pytest
 import h5py
-import os
+
 
 # TODO: test MPI facilities properly with:
 # https://github.com/rmjarvis/TreeCorr/blob/releases/4.1/tests/mock_mpi.py
@@ -434,22 +437,24 @@ def test_open_output():
         config_options = {}
         def run(self):
             pass
-    cmd = "Juliett", "--config", "tests/config.yml", "--my_output", "tests/test_out.hdf5"
 
-    # Testing without an alias
-    jj1 = Juliett(Juliett.parse_command_line(cmd))
+    with tempfile.TemporaryDirectory() as dirname:
+        cmd = "Juliett", "--config", "tests/config.yml", "--my_output", os.path.join(dirname, "test_out.hdf5")
+    
+        # Testing without an alias
+        jj1 = Juliett(Juliett.parse_command_line(cmd))
 
-    with jj1.open_output("my_output") as f:
-        print(f.keys())
+        with jj1.open_output("my_output") as f:
+            print(f.keys())
 
-    # Testing with an alias - config.yml defines an alias for my_input, my_alias
-    jj2 = Juliett.make_stage(name="JuliettCopy", aliases=dict(my_output='my_alias'))
+        # Testing with an alias - config.yml defines an alias for my_input, my_alias
+        jj2 = Juliett.make_stage(name="JuliettCopy", my_output=os.path.join(dirname, 'my_alias'))
 
-    print(jj2.get_aliases())
+        print(jj2.get_aliases())
 
-    # This works now
-    with jj2.open_output("my_output") as f:
-        print(f.keys())
+        # This works now
+        with jj2.open_output("my_output") as f:
+            print(f.keys())
 
 
 def core_test_map(comm):

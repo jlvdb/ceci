@@ -187,13 +187,10 @@ def test_build_interactive_pipe():
         **global_config,
     )
 
-    output_dir = 'temp_out'
-    run_config = dict(output_dir=output_dir, log_dir=output_dir, resume=False)
-    pipe.initialize(overall_inputs, run_config, None)
-    pipe.save('test_example.yml')
-    os.system(f"\\rm -rf {output_dir}")
-
-
+    with tempfile.TemporaryDirectory() as dirname:
+        run_config = dict(output_dir=dirname, log_dir=dirname, resume=False)
+        pipe.initialize(overall_inputs, run_config, None)
+        pipe.save(os.path.join(dirname, 'test_example.yml'))
 
 
 if __name__ == "__main__":
