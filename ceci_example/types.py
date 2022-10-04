@@ -1,4 +1,4 @@
-from ceci import DataHandle
+from descformats import DataHandle
 
 class DataFile(DataHandle):
     """

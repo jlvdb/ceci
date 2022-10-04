@@ -14,6 +14,8 @@ from abc import abstractmethod
 from . import errors
 from .monitor import MemoryMonitor
 from .config import StageParameter, StageConfig, cast_to_streamable
+from descformats.data import DATA_STORE
+from descformats.handle import DataHandle
 
 SERIAL = "serial"
 MPI_PARALLEL = "mpi"
@@ -91,6 +93,40 @@ class PipelineStage:
 
     See documentation pages for more details.
 
+    Notes
+    -----
+
+    1.  Recently added  access to the `DataStore`, which keeps track of the various
+    data used in a pipeline, and provides access to each by a unique key.
+
+    2.  Functionality to help manage multiple instances of a particular class of stage.
+    The original ceci design didn't have a mechanism to handle this.  If you tried
+    you would run into name clashes between the different instances.  In `ceci` 1.7 we
+    added functionality to `ceci` to allow you to have multiple instances of a single class,
+    in particular we distinguish between the class name (`cls.name`) and and the name of
+    the particular instance (`self.instance_name`) and added aliasing for inputs and outputs,
+    so that different instances of `PipelineStage` would be able to give different names
+    to their inputs and outputs.  However, using that functionality in a consistent way
+    requires a bit of care.  So here we are providing methods to do that, and to do it in
+    a way that uses the `DataStore` to keep track of the various data products.
+
+    These methods typically take a tag as input (i.e., something like "input"),
+    but use the "aliased_tag" (i.e., something like "inform_pz_input") when interacting
+    with the DataStore.
+
+    In particular, the `get_handle()`, `get_data()` and `input_iterator()` will get the data
+    from the DataStore under the aliased tag.  E.g., if you call `self.get_data('input')` for
+    a `Stage` that has aliased "input" to "special_pz_input", it will
+    get the data associated to "special_pz_input" in the DataStore.
+
+    Similarly, `add_handle()` and `set_data()` will add the data to the DataStore under the aliased tag
+    e.g., if you call `self.set_data('input')` for a `Stage` that has
+    aliased "input" to "special_pz_input", it will store the data in the DataStore
+    under the key "special_pz_input".
+
+    And `connect_input()` will do the alias lookup both on the input and output.
+    I.e., it is the same as calling
+    `self.set_data(inputTag, other.get_handle(outputTag, allow_missing=True), do_read=False)`
     """
 
     parallel = True
@@ -319,8 +355,6 @@ class PipelineStage:
         else:
             if path is None:
                 arg_data = data
-                path = data.path
-                self._inputs[tag] = data.path
             else:
                 arg_data = None
 
@@ -444,9 +478,16 @@ class PipelineStage:
         for i, x in enumerate(self.output_tags()):
             val = args.get(x)
             # aliased_tag = self.get_aliased_tag(x)
+            ftype = self.outputs[i][1]  # pylint: disable=no-member
             if val is None:
-                ftype = self.outputs[i][1]  # pylint: disable=no-member
+                # No requested name, so just make the make from the tag
                 val = ftype.make_name(x)
+            else:
+                # Check to see if the suffix is included in the requested name
+                splitval = os.path.splitext(val)                
+                if not splitval[1]:
+                    # No suffix, so append the standard suffix to the name
+                    val = ftype.make_name(splitval[0])
             self._outputs[x] = val
         self._io_checked = True
 
@@ -926,13 +967,11 @@ I currently know about these stages:
         temp_name = self.get_output(aliased_tag)
         final_name = self.get_output(aliased_tag, final_name=True)
 
-        if issubclass(tag_type, DataHandle):
-            handle = self.get_handle(tag, allow_missing=True)
-            if not os.path.exists(handle.path):
-                handle.write()
-            handle.path = final_name
-        else:
-            handle = None
+        assert issubclass(tag_type, DataHandle)
+        handle = self.get_handle(tag, allow_missing=True)
+        if not os.path.exists(handle.path):
+            handle.write()
+        handle.path = final_name
 
         # it's not an error here if the path does not exist,
         # because that will be handled later.
@@ -1200,7 +1239,7 @@ I currently know about these stages:
 
     def open_output(
         self, tag, wrapper=False, final_name=False, **kwargs
-    ):  # pragma: no cover
+    ):
         """
         Find and open an output file with the given tag, in write mode.
 
@@ -1239,7 +1278,7 @@ I currently know about these stages:
         # - we are actually running under MPI
         # and adds the flags required if all these are true
         run_parallel = kwargs.pop("parallel", False) and self.is_mpi()
-        if run_parallel:
+        if run_parallel:  # pragma: no cover
             kwargs["driver"] = "mpio"
             kwargs["comm"] = self.comm
 
@@ -1314,6 +1353,33 @@ I currently know about these stages:
                 return dt
         raise ValueError(f"Tag {tag} is not a known output")  # pragma: no cover
 
+    def input_iterator(self, tag, **kwargs):
+        """Iterate the input assocated to a particular tag
+        Parameters
+        ----------
+        tag : str
+            The tag (from cls.inputs or cls.outputs) for this data
+        kwargs : dict[str, Any]
+            These will be passed to the Handle's iterator method
+        """
+        handle = self.get_handle(tag, allow_missing=True)
+        if not handle.has_data:  #pragma: no cover
+            handle.read()
+        if self.config.hdf5_groupname:
+            self._input_length = handle.size(groupname=self.config.hdf5_groupname)
+            kwcopy = dict(groupname=self.config.hdf5_groupname,
+                          chunk_size=self.config.chunk_size,
+                          rank=self.rank,
+                          parallel_size=self.size)
+            kwcopy.update(**kwargs)
+            return handle.iterator(**kwcopy)
+        else:  #pragma: no cover
+            test_data = self.get_data('input')
+            s = 0
+            e = len(list(test_data.items())[0][1])
+            self._input_length=e
+            iterator=[[s, e, test_data]]
+            return iterator
 
     @property
     def provenance(self):

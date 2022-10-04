@@ -34,7 +34,7 @@ setup(
     extras_require={
       'parsl': ['flask', 'parsl>=1.0.0'],
       'cwl': ['cwlgen>=0.4', 'cwltool>=2.0.20200126090152'],
-      'test': ['pytest', 'codecov', 'pytest-cov', 'fitsio', 'h5py', "ruamel.yaml"],
+      'test': ['pytest', 'codecov', 'pytest-cov', 'tables_io', "ruamel.yaml"],
       }
 )
 >>>>>>> 2806b1d (add more test reqs)
