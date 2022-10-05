@@ -283,15 +283,39 @@ class PipelineStage:
             if path is None:
                 path = self.get_input(tag)
             handle_type = self.get_input_type(tag)
+            provenance = None
         else:
             if path is None:
                 path = self.get_output(tag)
             handle_type = self.get_output_type(tag)
+            provenance = self._provenance
         assert issubclass(handle_type, DataHandle)
-        handle = handle_type(aliased_tag, path=path, data=data, creator=self.instance_name)
+        handle = handle_type(aliased_tag, path=path, data=data, provenance=provenance, creator=self.instance_name)
         print(f"Inserting handle into data store.  {aliased_tag}: {handle.path}, {handle.creator}")
         self.data_store[aliased_tag] = handle
         return handle
+
+    def connect_input(self, other, inputTag=None, outputTag=None):
+        """Connect another stage to this stage as an input
+
+        Parameters
+        ----------
+        other : RailStage
+             The stage whose output is being connected
+        inputTag : str
+             Which input tag of this stage to connect to.  None -> self.inputs[0]
+        outputTag : str
+             Which output tag of the other stage to connect to.  None -> other.outputs[0]
+        Returns
+        -------
+        handle : The input handle for this stage
+        """
+        if inputTag is None:
+            inputTag = self.inputs[0][0]  #pylint: disable=no-member
+        if outputTag is None:
+            outputTag = other.outputs[0][0]
+        handle = other.get_handle(outputTag, allow_missing=True)
+        return self.set_data(inputTag, handle, do_read=False)
 
     def get_data(self, tag, allow_missing=True):
         """Gets the data associated to a particular tag
@@ -349,6 +373,7 @@ class PipelineStage:
             aliased_tag = data.tag
             if tag in self.input_tags():
                 self._aliases[tag] = aliased_tag
+                self.config[tag] = aliased_tag
                 if data.has_path:
                     self._inputs[tag] = data.path
             arg_data = data.data
@@ -969,7 +994,7 @@ I currently know about these stages:
 
         assert issubclass(tag_type, DataHandle)
         handle = self.get_handle(tag, allow_missing=True)
-        if not os.path.exists(handle.path):
+        if not os.path.exists(handle.path):  # pragma: no cover
             handle.write()
         handle.path = final_name
 
@@ -1307,7 +1332,7 @@ I currently know about these stages:
         # Return an opened object representing the file
         obj = output_class(tag, path=path, provenance=self.provenance, **kwargs)
 
-        if wrapper:
+        if wrapper:  # pragma: no cover
             return obj
         return obj.open(mode="w")
 

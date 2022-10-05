@@ -30,7 +30,7 @@ class ColumnMapper(PipelineStage):
     config_options = PipelineStage.config_options.copy()
     config_options.update(chunk_size=100_000, columns=dict, inplace=False)
     inputs = [('input', PqHandle)]
-    outputs = [('output', PqHandle)]
+    outputs = [('output', Hdf5Handle)]
 
     def __init__(self, args, comm=None):
         PipelineStage.__init__(self, args, comm=comm)
@@ -41,11 +41,6 @@ class ColumnMapper(PipelineStage):
         if self.config.inplace:  #pragma: no cover
             out_data = data
         self.add_data('output', out_data)
-
-    def __repr__(self):  # pragma: no cover
-        printMsg = "Stage that applies remaps the following column names in a pandas DataFrame:\n"
-        printMsg += "f{str(self.config.columns)}"
-        return printMsg
 
     def __call__(self, data: pd.DataFrame) -> pd.DataFrame:
         """Return a table with the columns names changed
@@ -63,43 +58,48 @@ class ColumnMapper(PipelineStage):
         self.set_data('input', data)
         self.run()
         return self.get_handle('output')
+
+
+class ProvChecker(PipelineStage):
+    name = 'ProvChecker'
+    config_options = PipelineStage.config_options.copy()
+    inputs = [('input', PqHandle)]
+    outputs = []
+
+    def run(self):
+        data = self.get_data('input', allow_missing=True)
+        f = self.open_input('input', wrapper=True)
+        assert f.provenance
+        
+
+def test_stage_provenance():
+    DS = PipelineStage.data_store
+    DS.clear()
     
-    def input_iterator(self, tag, **kwargs):
-        """Iterate the input assocated to a particular tag
+    datapath = os.path.join(CECIDIR, 'tests', 'data', 'test_dc2_training_9816.pq')
+    cm = ColumnMapper.make_stage(input=datapath, chunk_size=1000,
+                                 hdf5_groupname='photometry', columns=dict(id='bob'))
 
-        Parameters
-        ----------
-        tag : str
-            The tag (from cls.inputs or cls.outputs) for this data
+    prov = cm.provenance
+    assert prov == cm.provenance
 
-        kwargs : dict[str, Any]
-            These will be passed to the Handle's iterator method
-        """
-        handle = self.get_handle(tag, allow_missing=True)
-        if not handle.has_data:  #pragma: no cover
-            handle.read()
-        if self.config.hdf5_groupname:
-            self._input_length = handle.size(groupname=self.config.hdf5_groupname)
-            kwcopy = dict(groupname=self.config.hdf5_groupname,
-                          chunk_size=self.config.chunk_size,
-                          rank=self.rank,
-                          parallel_size=self.size)
-            kwcopy.update(**kwargs)
-            return handle.iterator(**kwcopy)
-        else:  #pragma: no cover
-            test_data = self.get_data('input')
-            s = 0
-            e = len(list(test_data.items())[0][1])
-            self._input_length=e
-            iterator=[[s, e, test_data]]
-            return iterator
+    th = Hdf5Handle('data', path=datapath)
 
+    out_handle = cm(th)
+    cm.finalize()
 
+    pc = ProvChecker.make_stage(input=out_handle.path)
+    assert pc.connect_input(cm, 'input', 'output') is not None
+    assert pc.connect_input(cm) is not None
+    pc.run()
+    
+    
+    
 def test_stage_interface():
     DS = PipelineStage.data_store
     DS.clear()
     
-    datapath = os.path.join(CECIDIR, 'tests', 'data', 'test_dc2_training_9816.hdf5')
+    datapath = os.path.join(CECIDIR, 'tests', 'data', 'test_dc2_training_9816.pq')
     cm = ColumnMapper.make_stage(input=datapath, chunk_size=1000,
                                  hdf5_groupname='photometry', columns=dict(id='bob'))
 

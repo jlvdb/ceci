@@ -51,7 +51,7 @@ def find_module_versions():
             v = module.version
         elif hasattr(module, "__version__"):
             v = module.__version__
-        else:
+        else:  # pragma: no cover
             continue
         if isinstance(v, (str, distutils.version.Version)):
             versions[name] = str(v)
