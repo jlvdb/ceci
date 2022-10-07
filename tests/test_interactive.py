@@ -131,14 +131,19 @@ def test_inter_pipe():
 
 def test_build_interactive_pipe():
 
-    pipe = Pipeline.interactive()
 
     global_config = dict(metacalibration=True)
     overall_inputs = {'DM':'./tests/inputs/dm.txt',
                       'fiducial_cosmology':'./tests/inputs/fiducial_cosmology.txt'}
+    pipe = Pipeline.interactive()
 
-    pipe.PZEstimationPipe = PZEstimationPipe.build()
+    pipe.PZEstimationPipe = PZEstimationPipe.build(
+        DM='./tests/inputs/dm.txt',
+        fiducial_cosmology='./tests/inputs/fiducial_cosmology.txt',
+        **global_config,
+    )
     pipe.shearMeasurementPipe = shearMeasurementPipe.build(
+        DM='./tests/inputs/dm.txt',
         apply_flag=False,
         **global_config,
     )
