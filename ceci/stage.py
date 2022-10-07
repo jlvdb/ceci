@@ -1399,8 +1399,6 @@ I currently know about these stages:
             These will be passed to the Handle's iterator method
         """
         handle = self.get_handle(tag, allow_missing=True)
-        if not handle.has_data:  #pragma: no cover
-            handle.read()
         if self.config.hdf5_groupname:
             self._input_length = handle.size(groupname=self.config.hdf5_groupname)
             kwcopy = dict(groupname=self.config.hdf5_groupname,
