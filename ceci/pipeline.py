@@ -592,13 +592,7 @@ class Pipeline:
             stage = sec.stage_obj
         ret_dict = {}
         if stage is not None:
-            for input_tag in stage.input_tags():
-                ret_dict[input_tag] = stage.get_input(input_tag)
-            for output_tag in stage.output_tags():
-                ret_dict[output_tag] = stage.get_output(output_tag)
-            ret_dict.update(**stage.get_aliases())
-            return ret_dict
-        #    return stage.config.get("aliases", {})
+            return stage.config.get("aliases", {})
         return stages_config.get(stage_name, {}).get("aliases", {})
 
     def ordered_stages(self, overall_inputs, stages_config=None):
@@ -761,7 +755,7 @@ Some required inputs to the pipeline could not be found,
 {msg1}
 """
             )
-
+        
         return ordered_stages
 
     def initialize(self, overall_inputs, run_config, stages_config):

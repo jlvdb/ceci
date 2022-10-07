@@ -29,6 +29,7 @@ dynamic = ["version"]
 dependencies =[
     "pyyaml > 3",
     "psutil",
+    "descformats",
 ]
 
 
@@ -91,4 +92,29 @@ all = [
     "h5py",
     "dask[distributed]",
     "dask_mpi @ git+https://github.com/joezuntz/dask-mpi",
+]
+
+[tool.coverage.run]
+source = ["ceci"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:"
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--cov=ceci",
+    "--cov-branch",
+    "--cov-report=html"
 ]

@@ -95,7 +95,6 @@ def test_interactive_pipeline():
     pipe2.build_stage(WLGCSummaryStatistic, covariance='covariance_copy')
 
     assert len(pipe2.WLGCCov.outputs) == 1
-
     pipe2.initialize(overall_inputs, pipeline.run_config, pipeline.stages_config)
 
     pipe2.print_stages()
@@ -144,46 +143,41 @@ def test_build_interactive_pipe():
         **global_config,
     )
     pipe.WLGCSelector = WLGCSelector.build(
-        connections=dict(
-            shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
-            photoz_pdfs=pipe.PZEstimationPipe.io.photoz_pdfs,
-        ),
+        shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
+        photoz_pdfs=pipe.PZEstimationPipe.io.photoz_pdfs,
         zbin_edges=[0.2, 0.3, 0.5],
         ra_range=[-5, 5],
         **global_config,
     )
     pipe.SysMapMaker = SysMapMaker.build()
     pipe.SourceSummarizer = SourceSummarizer.build(
-        connections=dict(
-            tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
-            photoz_pdfs=pipe.PZEstimationPipe.io.photoz_pdfs,
-        ),
+        tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
+        photoz_pdfs=pipe.PZEstimationPipe.io.photoz_pdfs,
+        diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,        
         **global_config,
     )
     pipe.WLGCCov = WLGCCov.build(
-        connections=dict(
-            tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
-            shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
-            source_summary_data=pipe.SourceSummarizer.io.source_summary_data,
-            diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,
-        ),
+        tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
+        shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
+        source_summary_data=pipe.SourceSummarizer.io.source_summary_data,
+        diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,
         **global_config,
     )
-    pipe.WLGCRandoms = WLGCRandoms.build()
+    pipe.WLGCRandoms = WLGCRandoms.build(
+        diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,
+        **global_config,
+    )
     pipe.WLGCTwoPoint = WLGCTwoPoint.build(
-        connections=dict(
-            tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
-            shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
-            diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,
-            random_catalog=pipe.WLGCRandoms.io.random_catalog,
-        ),
+        tomography_catalog=pipe.WLGCSelector.io.tomography_catalog,
+        shear_catalog=pipe.shearMeasurementPipe.io.shear_catalog,
+        diagnostic_maps=pipe.SysMapMaker.io.diagnostic_maps,
+        random_catalog=pipe.WLGCRandoms.io.random_catalog,
         **global_config,
     )
     pipe.WLGCSummaryStatistic = WLGCSummaryStatistic.build(
-        connections=dict(
-            twopoint_data=pipe.WLGCTwoPoint.io.twopoint_data,
-            source_summary_data=pipe.SourceSummarizer.io.source_summary_data,
-        ),        
+        twopoint_data=pipe.WLGCTwoPoint.io.twopoint_data,
+        source_summary_data=pipe.SourceSummarizer.io.source_summary_data,
+        covariance=pipe.WLGCCov.io.covariance,
         **global_config,
     )
 
@@ -195,5 +189,5 @@ def test_build_interactive_pipe():
 
 if __name__ == "__main__":
     test_config()
-    test_interactive()
+    test_interactive_pipeline()
     test_build_interactive_pipe()

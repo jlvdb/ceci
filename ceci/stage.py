@@ -183,7 +183,6 @@ class PipelineStage:
         self._configs = StageConfig(**self.config_options)
         self._inputs = None
         self._outputs = None
-        self._aliases = {}
         self._parallel = SERIAL
         self._comm = None
         self._size = 1
@@ -219,16 +218,21 @@ class PipelineStage:
         kwcopy.setdefault("config", None)
         comm = kwcopy.pop("comm", None)
         name = kwcopy.get("name", None)
-        connections = kwargs.pop('connections', {})
+        #connections = {}
         for input_ in cls.inputs:
             kwcopy.setdefault(input_[0], 'None')
         if name is not None:
+            aliases = {}
             for output_ in cls.outputs:  # pylint: disable=no-member
                 outtag = output_[0]
-                kwcopy.setdefault(outtag, f"{outtag}_{name}")
+                aliases[outtag] = f"{outtag}_{name}"
+            if 'aliases' in kwcopy:
+                kwcopy['aliases'].update(**aliases)
+            else:
+                kwcopy['aliases'] = aliases
         stage = cls(kwcopy, comm=comm)
-        for key, val in connections.items():
-            stage.set_data(key, val, do_read=False)
+        #for key, val in connections.items():
+        #    stage.set_data(key, val, do_read=False)
         return stage
 
     @classmethod
@@ -372,8 +376,11 @@ class PipelineStage:
         if isinstance(data, DataHandle):
             aliased_tag = data.tag
             if tag in self.input_tags():
-                self._aliases[tag] = aliased_tag
-                self.config[tag] = aliased_tag
+                if 'aliases' in self.config:
+                    self.config['aliases'][tag] = aliased_tag
+                else:
+                    self.config['aliases'] = {tag:aliased_tag}
+                self.config[tag] = data.path
                 if data.has_path:
                     self._inputs[tag] = data.path
             arg_data = data.data
@@ -412,7 +419,9 @@ class PipelineStage:
     def get_aliases(self):
         """Returns the dictionary of aliases used to remap inputs and outputs
         in the case that we want to have multiple instance of this class in the pipeline"""
-        return self._aliases
+        if 'aliases' in self.config:
+            return self.config['aliases']
+        return {}
 
     def get_aliased_tag(self, tag):
         """Returns the possibly remapped value for an input or output tag
@@ -427,7 +436,7 @@ class PipelineStage:
         aliased_tag : `str`
             The aliases version of the tag
         """
-        return self._aliases.get(tag, tag)
+        return self.get_aliases().get(tag, tag)
 
     @abstractmethod
     def run(self):  # pragma: no cover
@@ -483,7 +492,9 @@ class PipelineStage:
         missing_inputs = []
         for x in self.input_tags():
             val = args.get(x)
-            if val is None:  # pragma: no cover
+            if isinstance(val, DataHandle):
+                self.set_data(x, val, do_read=False)
+            elif val is None:  # pragma: no cover
                 missing_inputs.append(f"--{x}")
             else:
                 self._inputs[x] = val
@@ -502,11 +513,11 @@ class PipelineStage:
         self._outputs = {}
         for i, x in enumerate(self.output_tags()):
             val = args.get(x)
-            # aliased_tag = self.get_aliased_tag(x)
+            aliased_tag = self.get_aliased_tag(x)
             ftype = self.outputs[i][1]  # pylint: disable=no-member
             if val is None:
                 # No requested name, so just make the make from the tag
-                val = ftype.make_name(x)
+                val = ftype.make_name(aliased_tag)
             else:
                 # Check to see if the suffix is included in the requested name
                 splitval = os.path.splitext(val)                
@@ -989,8 +1000,8 @@ I currently know about these stages:
         """
         tag_type = self.get_output_type(tag)
         aliased_tag = self.get_aliased_tag(tag)
-        temp_name = self.get_output(aliased_tag)
-        final_name = self.get_output(aliased_tag, final_name=True)
+        temp_name = self.get_output(tag)
+        final_name = self.get_output(tag, final_name=True)
 
         assert issubclass(tag_type, DataHandle)
         handle = self.get_handle(tag, allow_missing=True)
@@ -1442,7 +1453,7 @@ I currently know about these stages:
         """
         Returns the configuration dictionary for this stage, aggregating command
         line options and optional configuration file.
-        """
+        """        
         return self._configs
 
     def read_config(self, args):
@@ -1537,7 +1548,7 @@ I currently know about these stages:
             aliased_tag = self.get_aliased_tag(tag)
             if not tag in self._outputs: # pragma: no cover
                 self._outputs[tag]=ftype.make_name(aliased_tag)
-            ret_dict[aliased_tag] = f"{outdir}/{self._outputs[aliased_tag]}"
+            ret_dict[aliased_tag] = f"{outdir}/{self._outputs[tag]}"
         return ret_dict
 
     def print_io(self, stream=sys.stdout):

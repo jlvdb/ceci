@@ -7,9 +7,10 @@ from types import GeneratorType
 
 import ceci
 from ceci.stage import PipelineStage
+import descformats
 from descformats import DataStore, TableHandle, DataHandle, PqHandle, Hdf5Handle, FitsHandle
 
-CECIDIR = os.path.abspath(os.path.join(os.path.dirname(ceci.__file__), '..'))
+DATADIR = os.path.abspath(os.path.join(os.path.dirname(descformats.__file__), 'data'))
 
 #def test_data_file():    
 #    with pytest.raises(ValueError) as errinfo:
@@ -76,7 +77,7 @@ def test_stage_provenance():
     DS = PipelineStage.data_store
     DS.clear()
     
-    datapath = os.path.join(CECIDIR, 'tests', 'data', 'test_dc2_training_9816.pq')
+    datapath = os.path.join(DATADIR, 'testdata', 'test_dc2_training_9816.pq')
     cm = ColumnMapper.make_stage(input=datapath, chunk_size=1000,
                                  hdf5_groupname='photometry', columns=dict(id='bob'))
 
@@ -99,7 +100,7 @@ def test_stage_interface():
     DS = PipelineStage.data_store
     DS.clear()
     
-    datapath = os.path.join(CECIDIR, 'tests', 'data', 'test_dc2_training_9816.pq')
+    datapath = os.path.join(DATADIR, 'testdata', 'test_dc2_training_9816.pq')
     cm = ColumnMapper.make_stage(input=datapath, chunk_size=1000,
                                  hdf5_groupname='photometry', columns=dict(id='bob'))
 
@@ -134,7 +135,7 @@ def test_data_hdf5_iter():
     DS = PipelineStage.data_store
     DS.clear()
     
-    datapath = os.path.join(CECIDIR, 'tests', 'data', 'test_dc2_training_9816.hdf5')
+    datapath = os.path.join(DATADIR, 'testdata', 'test_dc2_training_9816.hdf5')
     cm = ColumnMapper.make_stage(input=datapath, chunk_size=1000,
                                  hdf5_groupname='photometry', columns=dict(id='bob'))
     x = cm.input_iterator('input')

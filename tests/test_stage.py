@@ -121,7 +121,7 @@ def test_make_stage():
             pass
 
     stage = TestStage.make_stage(name="copy_of_test_stage", a='c', inp1='dummy', out="my_file.hdf5")
-    assert stage.find_outputs('.')['out'] =='./my_file.hdf5'
+    assert stage.find_outputs('.')['out_copy_of_test_stage'] =='./my_file.hdf5'
     assert stage.config.a == 'c'
 
 
