@@ -4,7 +4,7 @@ import numpy as np
 
 from ceci.stage import PipelineStage
 from ceci.config import StageParameter
-from ceci_example.types import HDFFile
+from descformats.base import HDFFile
 from ceci.errors import *
 import pytest
 import h5py

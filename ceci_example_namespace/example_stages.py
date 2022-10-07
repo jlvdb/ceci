@@ -1,5 +1,5 @@
 from ceci import PipelineStage
-from ceci_example.types import TextFile, YamlFile
+from descformats.base import TextFile, YamlFile
 
 
 class NMshearMeasurementPipe(PipelineStage):

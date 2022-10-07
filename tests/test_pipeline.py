@@ -1,5 +1,5 @@
 from ceci import PipelineStage, MiniPipeline, ParslPipeline, Pipeline, DryRunPipeline
-from ceci_example.types import TextFile
+from descformats.base import TextFile
 from ceci.sites import load, reset_default_site
 from ceci.utils import extra_paths
 import pytest

@@ -1,5 +1,5 @@
 from ceci import PipelineStage
-from .types import TextFile, YamlFile
+from descformats.base import TextFile, YamlFile
 
 
 class shearMeasurementPipe(PipelineStage):
